@@ -3,24 +3,106 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Şarkı Sözleri</title>
-  <script src="https://apis.google.com/js/api.js"></script>
-  <script src="https://apis.google.com/js/client.js?onload=onApiLoad"></script>
+  <title>Şarkı Sözleri Uygulaması</title>
+
+  <!-- Google Identity Services -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Google Drive API -->
+  <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()" async defer></script>
+  <script src="https://apis.google.com/js/client.js" onload="gapiLoaded()" async defer></script>
+
+  <!-- Diğer kütüphaneler -->
   <script src="https://unpkg.com/mammoth@latest/mammoth.browser.min.js"></script>
   <script src="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.min.js"></script>
   <script src="https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+
   <style>
-    body { font-family: Arial; text-align: center; padding: 20px; background: #f0f8ff; }
-    button { padding: 12px 24px; margin: 10px; font-size: 16px; background: #4285f4; color: white; border: none; border-radius: 6px; cursor: pointer; }
-    button:hover { background: #3367d6; }
-    #playlist { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 20px; }
-    .song-item { padding: 12px; width: 200px; background: white; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; }
-    #lyrics { margin: 30px auto; padding: 20px; max-width: 800px; font-size: 20px; line-height: 1.8; background: white; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); white-space: pre-line; min-height: 200px; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      padding: 20px;
+      background-color: #f7f9fc;
+      color: #333;
+    }
+    h1 {
+      color: #2c3e50;
+    }
+    #login {
+      margin: 40px;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 10px;
+    }
+    button:hover {
+      background-color: #3367d6;
+    }
+    #playlist {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin: 20px;
+    }
+    .song-item {
+      padding: 12px;
+      width: 200px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .song-item:hover {
+      background: #eef5ff;
+      transform: translateY(-2px);
+    }
+    #lyrics {
+      margin: 30px auto;
+      padding: 20px;
+      max-width: 800px;
+      font-size: 22px;
+      line-height: 1.8;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+      white-space: pre-line;
+      min-height: 200px;
+    }
+    .hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
-  <h1>🎤 Şarkı Sözleri</h1>
-  <div id="login"><button onclick="initGapi()">Google ile Giriş Yap</button></div>
+  <h1>🎤 Şarkı Sözleri Uygulaması</h1>
+
+  <div id="login">
+    <div id="g_id_onload"
+         data-client_id="410982653477-lcit9rcrr9chhuolceqksjjs21cqrq47.apps.googleusercontent.com"
+         data-context="use"
+         data-ux_mode="popup"
+         data-callback="handleCredentialResponse"
+         data-auto_select="true"
+         data-itp_support="true">
+    </div>
+    <div class="g_id_signin"
+         data-type="standard"
+         data-shape="rectangular"
+         data-theme="filled_blue"
+         data-text="sign_in"
+         data-size="large"
+         data-logo_alignment="left">
+    </div>
+  </div>
+
   <div id="app" class="hidden">
     <button onclick="chooseFolder()">Ana Klasör Seç</button>
     <div id="playlist"></div>
@@ -29,98 +111,102 @@
 
   <script>
     let accessToken = null;
-    const CLIENT_ID = '410982653477-lcit9rcrr9chhuolceqksjjs21cqrq47.apps.googleusercontent.com';
+    let selectedFolderId = null;
+    let allFiles = [];
 
-    function onApiLoad() {
-      gapi.load('client:picker', () => {
-        gapi.client.init({ clientId: CLIENT_ID, scope: 'https://www.googleapis.com/auth/drive.readonly' });
+    function gapiLoaded() {
+      console.log('GAPI yüklendi');
+    }
+
+    window.handleCredentialResponse = function(response) {
+      document.getElementById('login').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+
+      accessToken = response.credential;
+      gapi.client.init({
+        apiKey: 'AIzaSyD2hsJkZd5vEbKk6B4QqZ7Y6u8t9Xw0j1A',
+        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+      }).then(() => {
+        gapi.client.setToken({ access_token: accessToken });
       });
     }
 
-    async function initGapi() {
-      const auth = gapi.auth2.getAuthInstance();
-      const user = await auth.signIn();
-      accessToken = user.getAuthResponse().access_token;
-      document.getElementById('login').classList.add('hidden');
-      document.getElementById('app').classList.remove('hidden');
-    }
-
     function chooseFolder() {
+      const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
+        .setIncludeFolders(true)
+        .setMimeTypes('application/vnd.google-apps.folder');
+
       const picker = new google.picker.PickerBuilder()
-        .addView(google.picker.ViewId.FOLDERS)
+        .addView(view)
         .setOAuthToken(accessToken)
         .setDeveloperKey('AIzaSyD2hsJkZd5vEbKk6B4QqZ7Y6u8t9Xw0j1A')
-        .setCallback(async (data) => {
-          if (data.action === google.picker.Action.PICKED) {
-            const folderId = data.docs[0].id;
-            const res = await gapi.client.drive.files.list({
-              q: `'${folderId}' in parents and trashed = false`,
-              fields: 'files(id, name, mimeType)'
-            });
-            const files = res.result.files.filter(f => 
-              ['txt', 'pdf', 'docx', 'jpeg', 'jpg', 'png'].includes(f.name.split('.').pop().toLowerCase())
-            );
-            const playlistEl = document.getElementById('playlist');
-            playlistEl.innerHTML = '';
-            files.forEach(f => {
-              const div = document.createElement('div');
-              div.className = 'song-item';
-              div.innerText = f.name;
-              div.onclick = async () => {
-                let text = 'Yükleniyor...';
-                try {
-                  if (f.name.endsWith('.txt')) {
-                    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
-                      headers: { 'Authorization': 'Bearer ' + accessToken }
-                    });
-                    text = await r.text();
-                  }
-                  else if (f.name.endsWith('.docx')) {
-                    const blob = await (await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
-                      headers: { 'Authorization': 'Bearer ' + accessToken }
-                    })).blob();
-                    const arrayBuffer = await blob.arrayBuffer();
-                    const result = await mammoth.extractRawText({ arrayBuffer });
-                    text = result.value;
-                  }
-                  else if (f.name.endsWith('.pdf')) {
-                    const blob = await (await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
-                      headers: { 'Authorization': 'Bearer ' + accessToken }
-                    })).blob();
-                    const url = URL.createObjectURL(blob);
-                    const pdf = await pdfjsLib.getDocument(url).promise;
-                    text = '';
-                    for (let i = 1; i <= pdf.numPages; i++) {
-                      const page = await pdf.getPage(i);
-                      const content = await page.getTextContent();
-                      text += content.items.map(item => item.str).join(' ') + '\n';
-                    }
-                  }
-                  else {
-                    const blob = await (await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
-                      headers: { 'Authorization': 'Bearer ' + accessToken }
-                    })).blob();
-                    const url = URL.createObjectURL(blob);
-                    const worker = await Tesseract.createWorker();
-                    await worker.load();
-                    await worker.loadLanguage('tur');
-                    await worker.initialize('tur');
-                    const result = await worker.recognize(url);
-                    text = result.data.text;
-                    await worker.terminate();
-                  }
-                } catch (e) {
-                  text = `Hata: ${e.message}`;
-                }
-                document.getElementById('lyrics').innerText = text;
-              };
-              playlistEl.appendChild(div);
-            });
-          }
-        })
+        .setCallback(pickerCallback)
         .build();
+
       picker.setVisible(true);
     }
-  </script>
-</body>
-</html>
+
+    async function pickerCallback(data) {
+      if (data.action === google.picker.Action.PICKED) {
+        selectedFolderId = data.docs[0].id;
+        await loadFolderContents(selectedFolderId);
+      }
+    }
+
+    async function loadFolderContents(parentId) {
+      const res = await gapi.client.drive.files.list({
+        q: `'${parentId}' in parents and trashed = false`,
+        fields: 'files(id, name, mimeType)'
+      });
+
+      const files = res.result.files;
+      allFiles = [];
+
+      files.forEach(file => {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (['txt', 'pdf', 'docx', 'jpeg', 'jpg', 'png'].includes(ext)) {
+          allFiles.push(file);
+        }
+      });
+
+      displayFileList();
+    }
+
+    function displayFileList() {
+      const playlistEl = document.getElementById('playlist');
+      playlistEl.innerHTML = '';
+
+      allFiles.forEach(file => {
+        const div = document.createElement('div');
+        div.className = 'song-item';
+        div.innerText = file.name;
+        div.onclick = () => loadFileContent(file);
+        playlistEl.appendChild(div);
+      });
+    }
+
+    async function loadFileContent(file) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      let text = 'Metin yükleniyor...';
+
+      try {
+        if (ext === 'txt') {
+          const res = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+            headers: { 'Authorization': 'Bearer ' + accessToken }
+          });
+          text = await res.text();
+        }
+        else if (ext === 'docx') {
+          const blob = await downloadBlob(file.id);
+          const arrayBuffer = await blob.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer });
+          text = result.value;
+        }
+        else if (ext === 'pdf') {
+          const blob = await downloadBlob(file.id);
+          const url = URL.createObjectURL(blob);
+          const pdf = await pdfjsLib.getDocument(url).promise;
+          text = '';
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const content = await page.getText
